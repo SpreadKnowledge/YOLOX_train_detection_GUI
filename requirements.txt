@@ -1,10 +1,21 @@
 --index-url https://download.pytorch.org/whl/cu124
 --extra-index-url https://pypi.org/simple
 
-customtkinter
-Pillow
-
 torch==2.5.1
 torchvision==0.20.1
 
-ultralytics
+customtkinter
+Pillow
+numpy
+opencv-python
+pyyaml
+tqdm
+loguru
+matplotlib
+pycocotools>=2.0.2
+tabulate
+psutil
+tensorboard
+onnx>=1.13.0
+onnxruntime
+onnxsim

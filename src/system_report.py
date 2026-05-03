@@ -1,23 +1,23 @@
 import importlib
-import os
 import platform
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-os.environ.setdefault("YOLO_CONFIG_DIR", str(Path.cwd() / ".ultralytics"))
-
 
 LIBRARIES = [
     "python",
     "torch",
     "torchvision",
-    "ultralytics",
     "customtkinter",
     "PIL",
     "cv2",
     "numpy",
+    "pycocotools",
+    "onnx",
+    "onnxruntime",
+    "loguru",
 ]
 
 
@@ -59,7 +59,7 @@ def _run_command(args):
 
 def collect_environment_report():
     lines = []
-    lines.append("YOLO training environment report")
+    lines.append("YOLOX training environment report")
     lines.append(f"Generated at: {datetime.now().isoformat(timespec='seconds')}")
     lines.append("")
 

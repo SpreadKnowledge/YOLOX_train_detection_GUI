@@ -13,42 +13,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 
-os.environ.setdefault("YOLO_CONFIG_DIR", str(Path.cwd() / ".ultralytics"))
-
 from src.gui_text import TEXT
-from src.train import create_yaml
+from src.yolox_gui.backend.paths import MODEL_SIZES
 
 
-MODEL_OPTIONS = [
-    ("YOLO26-Nano", "yolo26n"),
-    ("YOLO26-Small", "yolo26s"),
-    ("YOLO26-Medium", "yolo26m"),
-    ("YOLO26-Large", "yolo26l"),
-    ("YOLO26-ExtraLarge", "yolo26x"),
-    ("YOLO12-Nano", "yolo12n"),
-    ("YOLO12-Small", "yolo12s"),
-    ("YOLO12-Medium", "yolo12m"),
-    ("YOLO12-Large", "yolo12l"),
-    ("YOLO12-ExtraLarge", "yolo12x"),
-    ("YOLO11-Nano", "yolo11n"),
-    ("YOLO11-Small", "yolo11s"),
-    ("YOLO11-Medium", "yolo11m"),
-    ("YOLO11-Large", "yolo11l"),
-    ("YOLO11-ExtraLarge", "yolo11x"),
-    ("YOLOv10-Nano", "yolov10n"),
-    ("YOLOv10-Small", "yolov10s"),
-    ("YOLOv10-Medium", "yolov10m"),
-    ("YOLOv10-Balanced", "yolov10b"),
-    ("YOLOv10-Large", "yolov10l"),
-    ("YOLOv10-ExtraLarge", "yolov10x"),
-    ("YOLOv9-Compact", "yolov9c"),
-    ("YOLOv9-Enhanced", "yolov9e"),
-    ("YOLOv8-Nano", "yolov8n"),
-    ("YOLOv8-Small", "yolov8s"),
-    ("YOLOv8-Medium", "yolov8m"),
-    ("YOLOv8-Large", "yolov8l"),
-    ("YOLOv8-ExtraLarge", "yolov8x"),
-]
+MODEL_OPTIONS = [(model_size, model_size) for model_size in MODEL_SIZES]
 MODEL_NAME_TO_TYPE = dict(MODEL_OPTIONS)
 MODEL_DISPLAY_NAMES = [model_name for model_name, _ in MODEL_OPTIONS]
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
@@ -90,14 +59,14 @@ def normalize_path(path):
 def format_duration(seconds, language):
     seconds = max(float(seconds), 0.0)
     if seconds < 60:
-        return "1分未満" if language == "ja" else "<1 min"
+        return "1???" if language == "ja" else "<1 min"
     minutes = int((seconds + 59) // 60)
     if minutes < 60:
-        return f"約{minutes}分" if language == "ja" else f"about {minutes} min"
+        return f"?{minutes}?" if language == "ja" else f"about {minutes} min"
     hours = minutes // 60
     rem = minutes % 60
     if language == "ja":
-        return f"約{hours}時間{rem}分"
+        return f"?{hours}??{rem}?"
     return f"about {hours}h {rem}m"
 
 
@@ -123,7 +92,7 @@ class YoloGuiApp:
         ctk.set_widget_scaling(1.0)
 
         self.root = ctk.CTk()
-        self.root.title("YOLO Train and Detect")
+        self.root.title("YOLOX Train, Detect, and Export")
         self.root.minsize(1180, 720)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -149,9 +118,15 @@ class YoloGuiApp:
         self.detection_model_path = ""
         self.detection_save_dir = ""
         self.detection_confidence = "0.5"
+        self.detection_nms = "0.45"
         self.camera_confidence = "0.5"
         self.camera_devices = []
         self.camera_device_labels = {}
+        self.export_checkpoint_path = ""
+        self.export_onnx_path = ""
+        self.export_img_size = "640"
+        self.export_opset = "11"
+        self.export_running = False
 
         self.train_state = {
             "project_name": "",
@@ -265,6 +240,23 @@ class YoloGuiApp:
             )
             button.grid(row=row, column=0, sticky="ew", pady=5)
             self.nav_buttons[view] = button
+
+        export_button = ctk.CTkButton(
+            nav,
+            text=self.t("nav_export"),
+            height=44,
+            corner_radius=8,
+            anchor="w",
+            fg_color="transparent",
+            hover_color=COLORS["blue_hover"],
+            border_color=COLORS["line"],
+            border_width=1,
+            text_color=COLORS["text"],
+            font=("Segoe UI", 15, "bold"),
+            command=self.open_export_window,
+        )
+        export_button.grid(row=len(nav_items), column=0, sticky="ew", pady=(12, 5))
+        self.sidebar_busy_widgets.append(export_button)
 
         status = ctk.CTkFrame(self.sidebar, fg_color=COLORS["panel"], corner_radius=8)
         status.grid(row=2, column=0, sticky="ew", padx=14, pady=(4, 12))
@@ -547,6 +539,28 @@ class YoloGuiApp:
         )
         select_button.grid(row=0, column=1, sticky="e")
         self.main_lock_widgets.append(select_button)
+
+    def _model_size_selector(self, parent, row):
+        ctk.CTkLabel(
+            parent,
+            text=self.t("yolo_model"),
+            font=("Segoe UI", 13, "bold"),
+            text_color=COLORS["text"],
+            anchor="w",
+        ).grid(row=row, column=0, sticky="ew", padx=14, pady=(12, 4))
+        selector = ctk.CTkOptionMenu(
+            parent,
+            variable=self.selected_model_var,
+            values=MODEL_DISPLAY_NAMES,
+            height=40,
+            fg_color=COLORS["panel_alt"],
+            button_color=COLORS["blue"],
+            button_hover_color=COLORS["blue_hover"],
+            text_color=COLORS["text"],
+        )
+        selector.grid(row=row + 1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        self.main_lock_widgets.append(selector)
+        return selector
 
     def _path_summary(self, path):
         if not path:
@@ -853,6 +867,13 @@ class YoloGuiApp:
                     self.detection_confidence = widget.get().strip() or "0.5"
             except tk.TclError:
                 pass
+        widget = getattr(self, "detection_nms_entry", None)
+        if widget is not None:
+            try:
+                if widget.winfo_exists():
+                    self.detection_nms = widget.get().strip() or "0.45"
+            except tk.TclError:
+                pass
         widget = getattr(self, "camera_conf_entry", None)
         if widget is not None:
             try:
@@ -896,18 +917,7 @@ class YoloGuiApp:
         frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
         frame.grid_columnconfigure(0, weight=1)
 
-        current_family = ""
         for row, model_name in enumerate(MODEL_DISPLAY_NAMES):
-            family = model_name.split("-", 1)[0]
-            if family != current_family:
-                current_family = family
-                ctk.CTkLabel(
-                    frame,
-                    text=family,
-                    text_color=COLORS["muted"],
-                    font=("Segoe UI", 13, "bold"),
-                    anchor="w",
-                ).grid(row=row * 2, column=0, sticky="ew", padx=8, pady=(12, 4))
             button = ctk.CTkButton(
                 frame,
                 text=model_name,
@@ -918,12 +928,14 @@ class YoloGuiApp:
                 text_color=COLORS["text"],
                 command=lambda name=model_name: self.select_model_from_dialog(name, window),
             )
-            button.grid(row=row * 2 + 1, column=0, sticky="ew", padx=8, pady=3)
+            button.grid(row=row, column=0, sticky="ew", padx=8, pady=4)
 
     def select_model_from_dialog(self, model_name, window):
         self.selected_model_var.set(model_name)
         if hasattr(self, "selected_model_label") and self.selected_model_label.winfo_exists():
             self.selected_model_label.configure(text=model_name)
+        if hasattr(self, "export_model_var"):
+            self.export_model_var.set(model_name)
         window.destroy()
 
     def parse_confidence(self, entry):
@@ -1063,6 +1075,14 @@ class YoloGuiApp:
             )
             return None
 
+        for label, path in [
+            (self.t("train_data"), self.train_data_path),
+            (self.t("save_folder"), self.model_save_path),
+        ]:
+            if not Path(path).exists():
+                messagebox.showwarning(self.t("invalid_title"), f"{label} does not exist:\n{path}")
+                return None
+
         if not re.fullmatch(r"[A-Za-z0-9_-]+", project_name):
             messagebox.showwarning(self.t("invalid_title"), self.t("invalid_project"))
             return None
@@ -1091,17 +1111,6 @@ class YoloGuiApp:
         if settings is None:
             return
 
-        try:
-            yaml_path = create_yaml(
-                settings["project_name"],
-                self.train_data_path,
-                settings["class_names"],
-                self.model_save_path,
-            )
-        except Exception as exc:
-            messagebox.showerror(self.t("error"), str(exc))
-            return
-
         self.set_busy(True)
         self.training_stop_requested = False
         self.training_started_at = time.time()
@@ -1124,19 +1133,26 @@ class YoloGuiApp:
         cmd_args = [
             sys.executable,
             "-m",
-            "src.train",
+            "src.yolox_gui.backend.train",
+            "--project-name",
             settings["project_name"],
+            "--dataset-path",
             self.train_data_path,
+            "--class-names",
             ",".join(settings["class_names"]),
+            "--output-dir",
             self.model_save_path,
+            "--model-size",
             settings["model_type"],
+            "--img-size",
             str(settings["input_size"]),
+            "--epochs",
             str(settings["epochs"]),
-            yaml_path,
+            "--batch-size",
             str(settings["batch_size"]),
         ]
         env = os.environ.copy()
-        env.setdefault("YOLO_CONFIG_DIR", str(Path.cwd() / ".ultralytics"))
+        self.append_train_log("command: " + " ".join(f'"{part}"' if " " in part else part for part in cmd_args))
 
         thread = threading.Thread(target=self._run_training_process, args=(cmd_args, env), daemon=True)
         thread.start()
@@ -1263,6 +1279,8 @@ class YoloGuiApp:
         row += 2
         self._path_selector(controls, row, "model_file", "detection_model_path", self.select_detection_model, "detect_model")
         row += 2
+        self._model_size_selector(controls, row)
+        row += 2
 
         ctk.CTkLabel(
             controls,
@@ -1283,6 +1301,27 @@ class YoloGuiApp:
         self.detection_conf_entry.insert(0, self.detection_confidence)
         self.detection_conf_entry.grid(row=row + 1, column=0, sticky="ew", padx=14, pady=(0, 4))
         self.main_lock_widgets.append(self.detection_conf_entry)
+        row += 2
+
+        ctk.CTkLabel(
+            controls,
+            text=self.t("nms"),
+            font=("Segoe UI", 13, "bold"),
+            text_color=COLORS["text"],
+            anchor="w",
+        ).grid(row=row, column=0, sticky="ew", padx=14, pady=(12, 4))
+        self.detection_nms_entry = ctk.CTkEntry(
+            controls,
+            height=40,
+            corner_radius=8,
+            placeholder_text=self.t("nms_placeholder"),
+            fg_color=COLORS["panel_alt"],
+            text_color=COLORS["text"],
+            border_color=COLORS["line"],
+        )
+        self.detection_nms_entry.insert(0, self.detection_nms)
+        self.detection_nms_entry.grid(row=row + 1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        self.main_lock_widgets.append(self.detection_nms_entry)
         row += 2
 
         self.start_detection_button = ctk.CTkButton(
@@ -1363,7 +1402,9 @@ class YoloGuiApp:
     def select_detection_model(self):
         if self.busy:
             return
-        path = filedialog.askopenfilename(filetypes=[(self.t("file_model_filter"), "*.pt"), (self.t("all_models"), "*.*")])
+        path = filedialog.askopenfilename(
+            filetypes=[(self.t("file_model_filter"), "*.pth *.pt"), (self.t("all_models"), "*.*")]
+        )
         if path:
             self.detection_model_path = normalize_path(path)
             self._refresh_path_label("detect_model", self.detection_model_path)
@@ -1383,7 +1424,15 @@ class YoloGuiApp:
         confidence = self.parse_confidence(self.detection_conf_entry)
         if confidence is None:
             return
+        nms_threshold = self.parse_confidence(self.detection_nms_entry)
+        if nms_threshold is None:
+            return
+        selected_model_size = MODEL_NAME_TO_TYPE.get(self.selected_model_var.get(), "")
+        if not selected_model_size:
+            messagebox.showwarning(self.t("missing_title"), self.t("yolo_model"))
+            return
         self.detection_confidence = self.detection_conf_entry.get().strip()
+        self.detection_nms = self.detection_nms_entry.get().strip()
 
         self.set_busy(True)
         self.image_paths = []
@@ -1400,10 +1449,14 @@ class YoloGuiApp:
         self.clear_detection_log()
         self.append_detection_log(self.t("detect_running"))
 
-        thread = threading.Thread(target=self._run_image_detection, args=(confidence,), daemon=True)
+        thread = threading.Thread(
+            target=self._run_image_detection,
+            args=(confidence, nms_threshold, selected_model_size),
+            daemon=True,
+        )
         thread.start()
 
-    def _run_image_detection(self, confidence):
+    def _run_image_detection(self, confidence, nms_threshold, model_size):
         try:
             from src.detect import detect_images
 
@@ -1419,6 +1472,8 @@ class YoloGuiApp:
                 callback=done,
                 progress_callback=progress,
                 conf_threshold=confidence,
+                nms_threshold=nms_threshold,
+                model_size=model_size,
             )
         except Exception:
             self.queue.put(("detect_error", traceback.format_exc()))
@@ -1511,6 +1566,8 @@ class YoloGuiApp:
 
         row = 0
         self._path_selector(controls, row, "model_file", "detection_model_path", self.select_camera_model, "camera_model")
+        row += 2
+        self._model_size_selector(controls, row)
         row += 2
         self._path_selector(controls, row, "camera_save", "detection_save_dir", self.select_camera_save_folder, "camera_save")
         row += 2
@@ -1648,18 +1705,22 @@ class YoloGuiApp:
         confidence = self.parse_confidence(self.camera_conf_entry)
         if confidence is None:
             return
+        selected_model_size = MODEL_NAME_TO_TYPE.get(self.selected_model_var.get(), "")
+        if not selected_model_size:
+            messagebox.showwarning(self.t("missing_title"), self.t("yolo_model"))
+            return
         self.camera_confidence = self.camera_conf_entry.get().strip()
 
         self.set_busy(True)
         self.camera_button.configure(state="disabled")
         self.camera_status_label.configure(text=self.t("camera_running"), text_color=COLORS["accent"])
-        threading.Thread(target=self._load_camera, args=(camera_id, confidence), daemon=True).start()
+        threading.Thread(target=self._load_camera, args=(camera_id, confidence, selected_model_size), daemon=True).start()
 
-    def _load_camera(self, camera_id, confidence):
+    def _load_camera(self, camera_id, confidence, model_size):
         try:
             from src.camera import CameraDetection
 
-            camera = CameraDetection(self.detection_model_path, conf_threshold=confidence)
+            camera = CameraDetection(self.detection_model_path, model_size=model_size, conf_threshold=confidence)
             camera.set_save_directory(self.detection_save_dir)
             camera.start_camera(camera_id)
             self.queue.put(("camera_started", camera))
@@ -1707,6 +1768,278 @@ class YoloGuiApp:
             self.camera_status_label.configure(text=self.t("capture_failed"), text_color=COLORS["warning"])
             messagebox.showwarning(self.t("error"), self.t("capture_failed"))
 
+    def open_export_window(self):
+        if self.busy:
+            messagebox.showinfo(self.t("info"), self.t("blocked"))
+            return
+        if hasattr(self, "export_window") and self.export_window.winfo_exists():
+            self.export_window.focus()
+            return
+
+        window = ctk.CTkToplevel(self.root)
+        self.export_window = window
+        window.title(self.t("export_title"))
+        window.geometry("720x680")
+        window.transient(self.root)
+        window.grid_columnconfigure(0, weight=1)
+        window.grid_rowconfigure(1, weight=1)
+
+        header = ctk.CTkFrame(window, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text=self.t("export_title"),
+            font=("Segoe UI", 22, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(
+            header,
+            text=self.t("export_subtitle"),
+            text_color=COLORS["muted"],
+            anchor="w",
+        ).grid(row=1, column=0, sticky="ew", pady=(4, 0))
+
+        body = ctk.CTkFrame(window, fg_color=COLORS["bg"], corner_radius=0)
+        body.grid(row=1, column=0, sticky="nsew")
+        body.grid_columnconfigure(0, weight=0, minsize=320)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
+
+        form = ctk.CTkScrollableFrame(body, fg_color=COLORS["bg"], corner_radius=0)
+        form.grid(row=0, column=0, sticky="nsew", padx=(18, 8), pady=(0, 18))
+        form.grid_columnconfigure(0, weight=1)
+
+        row = 0
+        self._export_path_selector(form, row, "checkpoint_file", "export_checkpoint_path", self.select_export_checkpoint)
+        row += 2
+        self._export_path_selector(form, row, "output_onnx", "export_onnx_path", self.select_export_onnx)
+        row += 2
+
+        ctk.CTkLabel(form, text=self.t("yolo_model"), font=("Segoe UI", 13, "bold"), anchor="w").grid(
+            row=row, column=0, sticky="ew", padx=14, pady=(12, 4)
+        )
+        self.export_model_var = ctk.StringVar(value=self.selected_model_var.get())
+        model_menu = ctk.CTkOptionMenu(
+            form,
+            variable=self.export_model_var,
+            values=MODEL_DISPLAY_NAMES,
+            height=40,
+            fg_color=COLORS["panel_alt"],
+            button_color=COLORS["blue"],
+            button_hover_color=COLORS["blue_hover"],
+            text_color=COLORS["text"],
+        )
+        model_menu.grid(row=row + 1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        row += 2
+
+        self.export_img_entry = self._export_entry(form, row, "input_size", "input_size_placeholder", self.export_img_size)
+        row += 2
+        self.export_opset_entry = self._export_entry(form, row, "opset", "opset_placeholder", self.export_opset)
+        row += 2
+
+        self.export_simplify_var = ctk.BooleanVar(value=False)
+        self.export_dynamic_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            form,
+            text=self.t("simplify"),
+            variable=self.export_simplify_var,
+            text_color=COLORS["text"],
+        ).grid(row=row, column=0, sticky="w", padx=14, pady=(12, 6))
+        row += 1
+        ctk.CTkCheckBox(
+            form,
+            text=self.t("dynamic_axes"),
+            variable=self.export_dynamic_var,
+            text_color=COLORS["text"],
+        ).grid(row=row, column=0, sticky="w", padx=14, pady=(0, 12))
+        row += 1
+
+        self.export_onnx_button = ctk.CTkButton(
+            form,
+            text=self.t("export_onnx"),
+            height=46,
+            corner_radius=8,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+            text_color="#071013",
+            font=("Segoe UI", 15, "bold"),
+            command=self.start_onnx_export,
+        )
+        self.export_onnx_button.grid(row=row, column=0, sticky="ew", padx=14, pady=(8, 8))
+        row += 1
+        for label in ("TensorRT", "OpenVINO", "ncnn"):
+            ctk.CTkButton(
+                form,
+                text=f"{label} ({self.t('todo_not_implemented')})",
+                height=38,
+                state="disabled",
+            ).grid(row=row, column=0, sticky="ew", padx=14, pady=4)
+            row += 1
+
+        log_panel = ctk.CTkFrame(body, fg_color=COLORS["panel"], corner_radius=8)
+        log_panel.grid(row=0, column=1, sticky="nsew", padx=(8, 18), pady=(0, 18))
+        log_panel.grid_rowconfigure(1, weight=1)
+        log_panel.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            log_panel,
+            text=self.t("log_title"),
+            text_color=COLORS["text"],
+            font=("Segoe UI", 14, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 6))
+        self.export_log_text = ctk.CTkTextbox(
+            log_panel,
+            corner_radius=8,
+            fg_color=COLORS["log_bg"],
+            text_color=COLORS["log_text"],
+            font=("Consolas", 12),
+            wrap="word",
+        )
+        self.export_log_text.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 14))
+
+    def _export_entry(self, parent, row, label_key, placeholder_key, value):
+        ctk.CTkLabel(parent, text=self.t(label_key), font=("Segoe UI", 13, "bold"), anchor="w").grid(
+            row=row, column=0, sticky="ew", padx=14, pady=(12, 4)
+        )
+        entry = ctk.CTkEntry(
+            parent,
+            height=40,
+            corner_radius=8,
+            placeholder_text=self.t(placeholder_key),
+            fg_color=COLORS["panel_alt"],
+            text_color=COLORS["text"],
+            border_color=COLORS["line"],
+        )
+        entry.insert(0, value)
+        entry.grid(row=row + 1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        return entry
+
+    def _export_path_selector(self, parent, row, label_key, attr_name, command):
+        ctk.CTkLabel(parent, text=self.t(label_key), font=("Segoe UI", 13, "bold"), anchor="w").grid(
+            row=row, column=0, sticky="ew", padx=14, pady=(12, 4)
+        )
+        holder = ctk.CTkFrame(parent, fg_color="transparent")
+        holder.grid(row=row + 1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        holder.grid_columnconfigure(0, weight=1)
+        label = ctk.CTkLabel(
+            holder,
+            text=self._path_summary(getattr(self, attr_name, "")),
+            anchor="w",
+            justify="left",
+            text_color=COLORS["muted"],
+            fg_color=COLORS["panel_alt"],
+            corner_radius=8,
+            height=44,
+            padx=10,
+        )
+        label.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        setattr(self, f"{attr_name}_label", label)
+        ctk.CTkButton(
+            holder,
+            text=self.t("browse"),
+            width=82,
+            height=40,
+            corner_radius=8,
+            fg_color=COLORS["blue"],
+            hover_color=COLORS["blue_hover"],
+            command=command,
+        ).grid(row=0, column=1, sticky="e")
+
+    def select_export_checkpoint(self):
+        path = filedialog.askopenfilename(
+            title=self.t("select_checkpoint"),
+            filetypes=[(self.t("file_model_filter"), "*.pth *.pt"), (self.t("all_models"), "*.*")],
+        )
+        if path:
+            self.export_checkpoint_path = normalize_path(path)
+            self.export_checkpoint_path_label.configure(text=self._path_summary(self.export_checkpoint_path))
+
+    def select_export_onnx(self):
+        path = filedialog.asksaveasfilename(
+            title=self.t("select_output_onnx"),
+            defaultextension=".onnx",
+            filetypes=[("ONNX", "*.onnx"), (self.t("all_models"), "*.*")],
+        )
+        if path:
+            self.export_onnx_path = normalize_path(path)
+            self.export_onnx_path_label.configure(text=self._path_summary(self.export_onnx_path))
+
+    def append_export_log(self, line):
+        if hasattr(self, "export_log_text") and self.export_log_text.winfo_exists():
+            self.export_log_text.insert("end", str(line).rstrip() + "\n")
+            self.export_log_text.yview_moveto(1.0)
+
+    def start_onnx_export(self):
+        if self.export_running:
+            return
+        missing = []
+        if not self.export_checkpoint_path:
+            missing.append(self.t("checkpoint_file"))
+        if not self.export_onnx_path:
+            missing.append(self.t("output_onnx"))
+        if missing:
+            messagebox.showwarning(
+                self.t("missing_title"),
+                self.t("missing_prefix") + "\n\n" + "\n".join(f"- {item}" for item in missing),
+            )
+            return
+        try:
+            img_size = int(self.export_img_entry.get().strip())
+            opset = int(self.export_opset_entry.get().strip())
+            if img_size <= 0 or opset <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning(self.t("invalid_title"), self.t("invalid_number"))
+            return
+
+        self.export_img_size = str(img_size)
+        self.export_opset = str(opset)
+        self.export_running = True
+        self.export_onnx_button.configure(
+            text=self.t("export_running"),
+            state="disabled",
+            fg_color=COLORS["warning"],
+            hover_color=COLORS["warning_hover"],
+        )
+        if hasattr(self, "export_log_text") and self.export_log_text.winfo_exists():
+            self.export_log_text.delete("1.0", "end")
+        thread = threading.Thread(
+            target=self._run_onnx_export,
+            args=(
+                self.export_checkpoint_path,
+                self.export_model_var.get(),
+                self.export_onnx_path,
+                img_size,
+                opset,
+                self.export_simplify_var.get(),
+                self.export_dynamic_var.get(),
+            ),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_onnx_export(self, checkpoint_path, model_size, output_path, img_size, opset, simplify, dynamic_axes):
+        try:
+            from src.yolox_gui.backend.export import export_onnx
+
+            def progress(message):
+                self.queue.put(("export_log", message))
+
+            export_onnx(
+                checkpoint_path=checkpoint_path,
+                model_size=model_size,
+                output_path=output_path,
+                img_size=img_size,
+                opset=opset,
+                simplify=simplify,
+                dynamic_axes=dynamic_axes,
+                log_callback=progress,
+            )
+            self.queue.put(("export_done", output_path))
+        except Exception:
+            self.queue.put(("export_error", traceback.format_exc()))
+
     def process_queue(self):
         try:
             while True:
@@ -1743,12 +2076,39 @@ class YoloGuiApp:
                     if hasattr(self, "camera_status_label") and self.camera_status_label.winfo_exists():
                         self.camera_status_label.configure(text=payload, text_color=COLORS["danger"])
                     messagebox.showerror(self.t("error"), payload)
+                elif event == "export_log":
+                    self.append_export_log(payload)
+                elif event == "export_done":
+                    self.export_running = False
+                    if hasattr(self, "export_onnx_button") and self.export_onnx_button.winfo_exists():
+                        self.export_onnx_button.configure(
+                            text=self.t("export_onnx"),
+                            state="normal",
+                            fg_color=COLORS["accent"],
+                            hover_color=COLORS["accent_hover"],
+                        )
+                    self.append_export_log(self.t("export_done"))
+                    messagebox.showinfo(self.t("info"), self.t("export_done"))
+                elif event == "export_error":
+                    self.export_running = False
+                    if hasattr(self, "export_onnx_button") and self.export_onnx_button.winfo_exists():
+                        self.export_onnx_button.configure(
+                            text=self.t("export_onnx"),
+                            state="normal",
+                            fg_color=COLORS["accent"],
+                            hover_color=COLORS["accent_hover"],
+                        )
+                    self.append_export_log(payload)
+                    messagebox.showerror(self.t("error"), self.t("export_failed"))
         except Empty:
             pass
         self.root.after(100, self.process_queue)
 
     def on_close(self):
         if self.train_process is not None:
+            messagebox.showinfo(self.t("info"), self.t("blocked"))
+            return
+        if self.export_running:
             messagebox.showinfo(self.t("info"), self.t("blocked"))
             return
         if self.camera_detection is not None:

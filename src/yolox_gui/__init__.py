@@ -1,0 +1,2 @@
+"""YOLOX GUI application package."""
+

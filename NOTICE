@@ -1,0 +1,15 @@
+YOLOX-train-detection-GUI
+Copyright 2026 SpreadKnowledge
+
+This project is licensed under the Apache License 2.0.
+
+This project uses selected YOLOX components as third-party code.
+YOLOX is licensed under the Apache License 2.0.
+Original project: Megvii-BaseDetection/YOLOX
+Source: https://github.com/Megvii-BaseDetection/YOLOX
+
+The YOLOX-derived vendor copy is located at:
+src/yolox_gui/vendor/yolox/
+
+This project does not use the Ultralytics package.
+

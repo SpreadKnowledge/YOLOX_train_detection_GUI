@@ -2,7 +2,7 @@
 
 This is a desktop GUI application dedicated to YOLOX training, inference, and model export.
 
-This project does not use the Ultralytics package.
+<img width="2559" height="1522" alt="スクリーンショット 2026-05-03 201508" src="https://github.com/user-attachments/assets/7d7d0b25-86d8-465b-9d37-20cc19b1442c" />
 
 ## Overview
 

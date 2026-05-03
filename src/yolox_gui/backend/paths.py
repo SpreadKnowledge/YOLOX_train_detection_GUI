@@ -93,6 +93,8 @@ def yolox_subprocess_env() -> dict:
     if existing:
         entries.append(existing)
     env["PYTHONPATH"] = os.pathsep.join(entries)
+    env["PYTHONIOENCODING"] = "utf-8:replace"
+    env["PYTHONUTF8"] = "1"
     return env
 
 
@@ -192,4 +194,3 @@ def create_runtime_exp_file(
         )
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return target
-

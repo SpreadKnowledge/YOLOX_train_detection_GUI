@@ -8,6 +8,7 @@ from pathlib import Path
 from src.system_report import write_environment_report
 
 from .dataset import prepare_dataset_for_yolox
+from .logging import log_message
 from .paths import (
     create_runtime_exp_file,
     ensure_yolox_root,
@@ -22,10 +23,7 @@ YOLOX_PROGRESS_RE = re.compile(r"epoch:\s*(?P<epoch>\d+)/(?P<total>\d+)")
 
 
 def _log(log_callback, message: str):
-    if log_callback:
-        log_callback(message)
-    else:
-        print(message, flush=True)
+    log_message(log_callback, message)
 
 
 def _device_summary() -> tuple[str, bool]:

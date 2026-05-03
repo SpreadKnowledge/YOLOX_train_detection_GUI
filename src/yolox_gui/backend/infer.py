@@ -7,6 +7,7 @@ from typing import Iterable
 import cv2
 import torch
 
+from .logging import log_message
 from .paths import (
     add_yolox_to_syspath,
     find_class_names,
@@ -21,10 +22,7 @@ VALID_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv"}
 
 
 def _log(callback, message: str):
-    if callback:
-        callback(message)
-    else:
-        print(message, flush=True)
+    log_message(callback, message)
 
 
 def is_valid_image(file_path) -> bool:
@@ -259,4 +257,3 @@ def detect_images(
     if callback:
         callback(str(results_dir))
     return results_dir
-

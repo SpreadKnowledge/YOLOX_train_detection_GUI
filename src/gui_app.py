@@ -1152,6 +1152,8 @@ class YoloGuiApp:
             str(settings["batch_size"]),
         ]
         env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8:replace"
+        env["PYTHONUTF8"] = "1"
         self.append_train_log("command: " + " ".join(f'"{part}"' if " " in part else part for part in cmd_args))
 
         thread = threading.Thread(target=self._run_training_process, args=(cmd_args, env), daemon=True)

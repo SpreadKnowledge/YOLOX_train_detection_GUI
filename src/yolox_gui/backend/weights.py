@@ -2,6 +2,7 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlretrieve
 
+from .logging import log_message
 from .paths import MODEL_SIZES, validate_model_size, weights_root
 
 
@@ -25,10 +26,7 @@ def ensure_yolox_weight(model_size: str, log_callback=None) -> Path:
     validate_model_size(model_size)
 
     def log(message: str):
-        if log_callback:
-            log_callback(message)
-        else:
-            print(message, flush=True)
+        log_message(log_callback, message)
 
     weight_path = get_weight_path(model_size)
     log(f"selected model size: {model_size}")
@@ -65,4 +63,3 @@ def ensure_yolox_weight(model_size: str, log_callback=None) -> Path:
 
 
 __all__ = ["MODEL_SIZES", "YOLOX_WEIGHT_URLS", "ensure_yolox_weight", "get_weight_path"]
-

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .logging import log_message
 from .paths import (
     create_runtime_exp_file,
     ensure_yolox_root,
@@ -15,10 +16,7 @@ from .paths import (
 
 
 def _log(log_callback, message: str):
-    if log_callback:
-        log_callback(message)
-    else:
-        print(message, flush=True)
+    log_message(log_callback, message)
 
 
 def build_onnx_export_command(
@@ -170,4 +168,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

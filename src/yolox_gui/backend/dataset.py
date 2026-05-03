@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from .logging import log_message
+
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
@@ -19,10 +21,7 @@ class DatasetPreparation:
 
 
 def _log(log_callback, message: str):
-    if log_callback:
-        log_callback(message)
-    else:
-        print(message, flush=True)
+    log_message(log_callback, message)
 
 
 def _image_files(directory: Path) -> list[Path]:
@@ -241,4 +240,3 @@ def prepare_dataset_for_yolox(dataset_path, class_names: list[str], output_root,
         raise ValueError("\n".join(issues))
     output_dir = Path(output_root).resolve() / project_name / "yolox_dataset"
     return convert_yolo_to_coco(dataset_path, class_names, output_dir, log_callback=log_callback)
-

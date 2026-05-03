@@ -59,9 +59,15 @@ class CameraDetection:
             if not ret:
                 break
 
-            annotated, detections = self.predictor.predict_frame(frame)
+            # predict_frame() が入力画像に直接描画する可能性があるため、
+            # 推論前の元画像を必ず退避しておく
+            raw_frame = frame.copy()
+
+            # 推論にはコピーを渡すことで、raw_frame が汚染されないようにする
+            annotated, detections = self.predictor.predict_frame(frame.copy())
+
             with self.frame_lock:
-                self.last_frame = frame.copy()
+                self.last_frame = raw_frame.copy()
                 self.last_annotated = annotated.copy()
                 self.last_detections = list(detections)
 
@@ -116,14 +122,20 @@ class CameraDetection:
             frame = None if self.last_frame is None else self.last_frame.copy()
             annotated = None if self.last_annotated is None else self.last_annotated.copy()
             detections = list(self.last_detections)
+
         if frame is None or annotated is None:
             if not self.cap:
                 return None
             ret, frame = self.cap.read()
             if not ret:
                 return None
-            annotated, detections = self.predictor.predict_frame(frame)
-            frame = frame.copy()
+
+            # ここも _update_stream() と同じく、
+            # 推論前の元画像を退避してから predict_frame() にコピーを渡す
+            raw_frame = frame.copy()
+            annotated, detections = self.predictor.predict_frame(frame.copy())
+
+            frame = raw_frame.copy()
             annotated = annotated.copy()
             detections = list(detections)
 
@@ -134,12 +146,13 @@ class CameraDetection:
         save_dir_path = Path(self.save_dir)
         save_dir_path.mkdir(parents=True, exist_ok=True)
 
-        origin_image_path = str(save_dir_path / f"{base_filename}_origin.png")
+        origin_image_path = str(save_dir_path / f"{base_filename}_origin.jpg")
         detection_image_path = str(save_dir_path / f"{base_filename}_detection.jpg")
-        txt_path = str(save_dir_path / f"{base_filename}_detection.txt")
+        txt_path = str(save_dir_path / f"{base_filename}_origin.txt")
 
-        self._write_image(origin_image_path, frame, ".png", [cv2.IMWRITE_PNG_COMPRESSION, 9])
+        self._write_image(origin_image_path, frame, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
         self._write_image(detection_image_path, annotated, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
+
         with open(txt_path, "w", encoding="utf-8") as file:
             for label, confidence, bbox in detections:
                 x1, y1, x2, y2 = bbox

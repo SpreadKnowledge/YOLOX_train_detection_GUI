@@ -8,7 +8,7 @@ This is a desktop GUI application dedicated to YOLOX training, inference, and mo
 
 YOLOX-train-detection-GUI is a Python desktop application for running YOLOX workflows from a CustomTkinter GUI. It keeps the existing training, inference, camera, log, file selection, XML conversion, metrics, and system report structure while replacing the model backend with YOLOX.
 
-The current implementation vendors selected YOLOX code under `src/yolox_gui/vendor/yolox/`. The original `third_party/YOLOX` checkout is still present as source reference and can be removed later after release packaging is finalized.
+This project vendors selected YOLOX components under `src/yolox_gui/vendor/yolox/`. The original YOLOX project is <https://github.com/Megvii-BaseDetection/YOLOX>, and YOLOX is licensed under the Apache License 2.0. Users do not need to run `git submodule update` after cloning this repository.
 
 ## Features
 
@@ -149,6 +149,8 @@ The model size to URL table is centralized in:
 src/yolox_gui/backend/weights.py
 ```
 
+Pretrained YOLOX weights and trained checkpoints are not included in this repository. When a selected base weight is missing, the backend downloads it into `weights/yolox/` during first use.
+
 When a selected base weight is missing, the backend logs:
 
 - selected model size
@@ -162,13 +164,20 @@ Weight URLs are taken from the YOLOX model zoo information in the YOLOX reposito
 
 ## License
 
-This project is licensed under the Apache License 2.0. See `LICENSE`.
+This project is released under the Apache License 2.0.
+
+This project includes selected YOLOX components under `src/yolox_gui/vendor/yolox/`.
+YOLOX is also licensed under the Apache License 2.0.
+
+Commercial use is permitted under the Apache License 2.0, subject to the license terms.
+Please see `LICENSE`, `NOTICE`, and `THIRD_PARTY_LICENSES/` for details.
 
 ## Third-Party Components
 
 This project uses selected YOLOX components as third-party code.
 
 YOLOX is licensed under the Apache License 2.0.
+Original project: <https://github.com/Megvii-BaseDetection/YOLOX>
 
 The YOLOX vendor copy includes an origin notice:
 
@@ -185,7 +194,6 @@ THIRD_PARTY_LICENSES/
 
 ## TODO / Roadmap
 
-- Finalize whether `third_party/YOLOX` remains as a submodule/reference or is removed after validating the vendor copy.
 - Add a packaged dependency lock file for reproducible installation.
 - Add richer dataset validation reports in the GUI.
 - Add class-name selection for inference when using checkpoints from external training runs.

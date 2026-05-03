@@ -39,15 +39,8 @@ def vendor_yolox_root() -> Path:
     return src_root() / "yolox_gui" / "vendor" / "yolox"
 
 
-def third_party_yolox_root() -> Path:
-    return repo_root() / "third_party" / "YOLOX"
-
-
 def yolox_root() -> Path:
-    vendor = vendor_yolox_root()
-    if vendor.exists():
-        return vendor
-    return third_party_yolox_root()
+    return vendor_yolox_root()
 
 
 def weights_root() -> Path:

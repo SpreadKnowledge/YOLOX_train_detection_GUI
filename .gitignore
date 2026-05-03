@@ -3,5 +3,14 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-weights/
+# Model weights, exports, datasets, and generated run artifacts.
+*.pt
+*.pth
+*.onnx
+*.engine
+/weights/
+/runs/
+/outputs/
+/datasets/
+
 tmp*/

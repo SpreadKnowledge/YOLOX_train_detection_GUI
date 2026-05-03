@@ -20,10 +20,20 @@ from .weights import ensure_yolox_weight
 
 
 YOLOX_PROGRESS_RE = re.compile(r"epoch:\s*(?P<epoch>\d+)/(?P<total>\d+)")
+YOLOX_TRAINING_DONE_MARKER = "Training of experiment is done"
+YOLOX_FATAL_MARKERS = (
+    " | ERROR    | ",
+    "Traceback (most recent call last):",
+    "UnicodeDecodeError:",
+)
 
 
 def _log(log_callback, message: str):
     log_message(log_callback, message)
+
+
+def _is_yolox_fatal_line(line: str) -> bool:
+    return any(marker in line for marker in YOLOX_FATAL_MARKERS)
 
 
 def _device_summary() -> tuple[str, bool]:
@@ -125,11 +135,17 @@ def run_yolox_training(
     )
 
     assert process.stdout is not None
+    fatal_error_seen = False
+    training_completed_seen = False
     for raw_line in iter(process.stdout.readline, ""):
         line = raw_line.rstrip()
         if not line:
             continue
         _log(log_callback, line)
+        if YOLOX_TRAINING_DONE_MARKER in line:
+            training_completed_seen = True
+        elif _is_yolox_fatal_line(line):
+            fatal_error_seen = True
         match = YOLOX_PROGRESS_RE.search(line)
         if match:
             epoch = int(match.group("epoch"))
@@ -139,6 +155,11 @@ def run_yolox_training(
             _log(log_callback, f"GUI_PROGRESS epoch={epoch} total={total} elapsed={elapsed:.1f} eta={eta:.1f}")
 
     return_code = process.wait()
+    if return_code == 0 and fatal_error_seen and not training_completed_seen:
+        return_code = 1
+        _log(log_callback, "YOLOX emitted a fatal error while returning exit code 0; treating the run as failed.")
+    elif return_code == 0 and fatal_error_seen and training_completed_seen:
+        _log(log_callback, "YOLOX training completion was confirmed; keeping exit code 0 despite earlier warning-like output.")
     _log(log_callback, f"YOLOX training process exited with code {return_code}")
 
     classes_path = run_dir / "classes.txt"

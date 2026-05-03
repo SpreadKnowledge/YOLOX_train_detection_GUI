@@ -104,22 +104,6 @@ def _split_records(dataset_path: Path) -> tuple[list[tuple[Path, Path | None]], 
     return records[:split_at], records[split_at:]
 
 
-def _safe_image_name(source: Path, used_names: set[str]) -> str:
-    candidate = source.name
-    if candidate not in used_names:
-        used_names.add(candidate)
-        return candidate
-    stem = source.stem
-    suffix = source.suffix
-    index = 1
-    while True:
-        candidate = f"{stem}_{index}{suffix}"
-        if candidate not in used_names:
-            used_names.add(candidate)
-            return candidate
-        index += 1
-
-
 def _parse_label_file(label_path: Path | None, width: int, height: int, class_count: int) -> list[tuple[int, float, float, float, float]]:
     if label_path is None or not label_path.exists():
         return []
@@ -151,12 +135,9 @@ def _parse_label_file(label_path: Path | None, width: int, height: int, class_co
 
 
 def _write_coco_split(records, output_dir: Path, split_name: str, class_names: list[str]) -> int:
-    image_output_dir = output_dir / split_name
-    image_output_dir.mkdir(parents=True, exist_ok=True)
     annotations_dir = output_dir / "annotations"
     annotations_dir.mkdir(parents=True, exist_ok=True)
 
-    used_names = set()
     images = []
     annotations = []
     annotation_id = 1
@@ -164,13 +145,11 @@ def _write_coco_split(records, output_dir: Path, split_name: str, class_names: l
     for image_id, (image_path, label_path) in enumerate(records, start=1):
         with Image.open(image_path) as image:
             width, height = image.size
-        output_name = _safe_image_name(image_path, used_names)
-        shutil.copy2(str(image_path), str(image_output_dir / output_name))
 
         images.append(
             {
                 "id": image_id,
-                "file_name": output_name,
+                "file_name": str(image_path.resolve()),
                 "width": width,
                 "height": height,
             }
@@ -229,6 +208,7 @@ def convert_yolo_to_coco(dataset_path, class_names: list[str], output_dir, log_c
         encoding="utf-8",
     )
     _log(log_callback, f"prepared COCO dataset: {output}")
+    _log(log_callback, "image files are referenced in place; no training images were copied.")
     _log(log_callback, f"train images: {train_count}")
     _log(log_callback, f"val images: {val_count}")
     return DatasetPreparation(output, train_count, val_count, class_names)

@@ -47,6 +47,8 @@ COLORS = {
 PROGRESS_RE = re.compile(
     r"GUI_PROGRESS\s+epoch=(?P<epoch>\d+)\s+total=(?P<total>\d+)\s+"
     r"elapsed=(?P<elapsed>[\d.]+)\s+eta=(?P<eta>[\d.]+)"
+    r"(?:\s+iter=(?P<iter>\d+)\s+total_iter=(?P<total_iter>\d+)\s+"
+    r"step=(?P<step>\d+)\s+total_steps=(?P<total_steps>\d+))?"
 )
 
 
@@ -59,14 +61,14 @@ def normalize_path(path):
 def format_duration(seconds, language):
     seconds = max(float(seconds), 0.0)
     if seconds < 60:
-        return "1???" if language == "ja" else "<1 min"
+        return "\u0031\u5206\u672a\u6e80" if language == "ja" else "<1 min"
     minutes = int((seconds + 59) // 60)
     if minutes < 60:
-        return f"?{minutes}?" if language == "ja" else f"about {minutes} min"
+        return f"\u7d04{minutes}\u5206" if language == "ja" else f"about {minutes} min"
     hours = minutes // 60
     rem = minutes % 60
     if language == "ja":
-        return f"?{hours}??{rem}?"
+        return f"\u7d04{hours}\u6642\u9593{rem}\u5206"
     return f"about {hours}h {rem}m"
 
 
@@ -452,6 +454,7 @@ class YoloGuiApp:
     def _clear_key_bindings(self):
         for sequence in ("<Left>", "<Right>", "<Return>", "<Escape>"):
             self.root.unbind(sequence)
+            self.root.unbind_all(sequence)
 
     def _header(self, parent, title_key, subtitle_key):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -1214,19 +1217,28 @@ class YoloGuiApp:
             total = max(int(match.group("total")), 1)
             eta = float(match.group("eta"))
             elapsed = float(match.group("elapsed"))
-            progress = min(epoch / total, 1.0)
+            iter_current = int(match.group("iter")) if match.group("iter") else None
+            iter_total = max(int(match.group("total_iter")), 1) if match.group("total_iter") else None
+            step = int(match.group("step")) if match.group("step") else None
+            total_steps = max(int(match.group("total_steps")), 1) if match.group("total_steps") else None
+            progress = min((step / total_steps) if step and total_steps else (epoch / total), 1.0)
             if hasattr(self, "training_progress_bar") and self.training_progress_bar.winfo_exists():
                 self.training_progress_bar.set(progress)
             if hasattr(self, "training_status_label") and self.training_status_label.winfo_exists():
-                self.training_status_label.configure(text=f"{self.t('progress_running')} {epoch}/{total}")
+                suffix = f"{epoch}/{total}"
+                if iter_current is not None and iter_total is not None:
+                    suffix += f" iter {iter_current}/{iter_total}"
+                self.training_status_label.configure(text=f"{self.t('progress_running')} {suffix}")
             if hasattr(self, "training_eta_label") and self.training_eta_label.winfo_exists():
                 self.training_eta_label.configure(
                     text=f"{self.t('eta')}: {format_duration(eta, self.language_var.get())} / "
                     f"{self.t('elapsed')}: {format_duration(elapsed, self.language_var.get())}"
                 )
-            self.append_train_log(
-                f"Epoch {epoch}/{total} - ETA {format_duration(eta, self.language_var.get())}"
-            )
+            if iter_current is None or iter_total is None or iter_current == iter_total or iter_current % 10 == 0:
+                detail = f" iter {iter_current}/{iter_total}" if iter_current is not None and iter_total is not None else ""
+                self.append_train_log(
+                    f"Epoch {epoch}/{total}{detail} - ETA {format_duration(eta, self.language_var.get())}"
+                )
             return
         if line.startswith("GUI_DEVICE") or line.startswith("GUI_ARTIFACT"):
             self.append_train_log(line)
@@ -1668,8 +1680,18 @@ class YoloGuiApp:
             corner_radius=8,
         )
         self.camera_label.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
-        self.root.bind("<Return>", lambda _event: self.save_camera_frame())
-        self.root.bind("<Escape>", lambda _event: self.stop_camera_detection())
+        self.root.bind("<Return>", self._handle_camera_capture_key)
+        self.root.bind("<Escape>", self._handle_camera_stop_key)
+        self.root.bind_all("<Return>", self._handle_camera_capture_key)
+        self.root.bind_all("<Escape>", self._handle_camera_stop_key)
+
+    def _handle_camera_capture_key(self, _event=None):
+        self.save_camera_frame()
+        return "break"
+
+    def _handle_camera_stop_key(self, _event=None):
+        self.stop_camera_detection()
+        return "break"
 
     def select_camera_model(self):
         if self.busy:
@@ -1762,8 +1784,11 @@ class YoloGuiApp:
             return
         try:
             result = self.camera_detection.capture_frame()
-        except Exception:
-            result = None
+        except Exception as exc:
+            if hasattr(self, "camera_status_label") and self.camera_status_label.winfo_exists():
+                self.camera_status_label.configure(text=self.t("capture_failed"), text_color=COLORS["warning"])
+            messagebox.showwarning(self.t("error"), f"{self.t('capture_failed')}\n\n{exc}")
+            return
         if result:
             self.camera_status_label.configure(text=self.t("capture_done"), text_color=COLORS["accent"])
         else:

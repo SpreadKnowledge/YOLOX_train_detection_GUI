@@ -158,6 +158,7 @@ class Trainer:
         self.prefetcher = DataPrefetcher(self.train_loader)
         # max_iter means iters per epoch
         self.max_iter = len(self.train_loader)
+        self.gui_training_started_at = time.time()
 
         self.lr_scheduler = self.exp.get_lr_scheduler(
             self.exp.basic_lr_per_img * self.args.batch_size, self.max_iter
@@ -239,12 +240,36 @@ class Trainer:
     def before_iter(self):
         pass
 
+    def emit_gui_progress(self):
+        if self.rank != 0:
+            return
+        completed_iters = self.progress_in_iter + 1
+        total_iters = max(self.max_iter * self.max_epoch, 1)
+        elapsed = max(time.time() - getattr(self, "gui_training_started_at", time.time()), 0.1)
+        eta_seconds = max(total_iters - completed_iters, 0) * (elapsed / max(completed_iters, 1))
+        print(
+            "GUI_PROGRESS epoch={} total={} elapsed={:.1f} eta={:.1f} "
+            "iter={} total_iter={} step={} total_steps={}".format(
+                self.epoch + 1,
+                self.max_epoch,
+                elapsed,
+                eta_seconds,
+                self.iter + 1,
+                self.max_iter,
+                completed_iters,
+                total_iters,
+            ),
+            flush=True,
+        )
+
     def after_iter(self):
         """
         `after_iter` contains two parts of logic:
             * log information
             * reset setting of resize
         """
+        self.emit_gui_progress()
+
         # log needed information
         if (self.iter + 1) % self.exp.print_interval == 0:
             # TODO check ETA logic

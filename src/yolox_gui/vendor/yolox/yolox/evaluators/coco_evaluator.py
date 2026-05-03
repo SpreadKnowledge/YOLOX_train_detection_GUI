@@ -290,14 +290,19 @@ class COCOEvaluator:
                 _, tmp = tempfile.mkstemp()
                 json.dump(data_dict, open(tmp, "w"))
                 cocoDt = cocoGt.loadRes(tmp)
+            from pycocotools.cocoeval import COCOeval as StandardCOCOeval
+
             try:
-                from yolox.layers import COCOeval_opt as COCOeval
-            except ImportError:
-                from pycocotools.cocoeval import COCOeval
+                from yolox.layers import COCOeval_opt
 
-                logger.warning("Use standard COCOeval.")
-
-            cocoEval = COCOeval(cocoGt, cocoDt, annType[1])
+                cocoEval = COCOeval_opt(cocoGt, cocoDt, annType[1])
+            except Exception as exc:
+                logger.warning(
+                    "Fast COCOeval is unavailable ({}: {}). Use standard COCOeval.",
+                    exc.__class__.__name__,
+                    exc,
+                )
+                cocoEval = StandardCOCOeval(cocoGt, cocoDt, annType[1])
             cocoEval.evaluate()
             cocoEval.accumulate()
             redirect_string = io.StringIO()

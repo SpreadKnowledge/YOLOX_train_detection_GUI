@@ -32,6 +32,7 @@ class CameraDetection:
         self.last_frame = None
         self.last_annotated = None
         self.last_detections = []
+        self.frame_lock = threading.Lock()
 
     def start_camera(self, camera_id):
         self.cap = cv2.VideoCapture(camera_id)
@@ -59,9 +60,10 @@ class CameraDetection:
                 break
 
             annotated, detections = self.predictor.predict_frame(frame)
-            self.last_frame = frame.copy()
-            self.last_annotated = annotated.copy()
-            self.last_detections = detections
+            with self.frame_lock:
+                self.last_frame = frame.copy()
+                self.last_annotated = annotated.copy()
+                self.last_detections = list(detections)
 
             image = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
             image = self._resize_image_to_fit(image, display_label.winfo_width(), display_label.winfo_height())
@@ -99,13 +101,21 @@ class CameraDetection:
 
         return cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
+    @staticmethod
+    def _write_image(path, image, extension, params):
+        ok, encoded = cv2.imencode(extension, image, params)
+        if not ok:
+            raise OSError(f"Failed to encode image: {path}")
+        Path(path).write_bytes(encoded.tobytes())
+
     def capture_frame(self):
         if not self.save_dir:
             return None
 
-        frame = self.last_frame
-        annotated = self.last_annotated
-        detections = self.last_detections
+        with self.frame_lock:
+            frame = None if self.last_frame is None else self.last_frame.copy()
+            annotated = None if self.last_annotated is None else self.last_annotated.copy()
+            detections = list(self.last_detections)
         if frame is None or annotated is None:
             if not self.cap:
                 return None
@@ -113,6 +123,9 @@ class CameraDetection:
             if not ret:
                 return None
             annotated, detections = self.predictor.predict_frame(frame)
+            frame = frame.copy()
+            annotated = annotated.copy()
+            detections = list(detections)
 
         self.scene_id += 1
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -125,8 +138,8 @@ class CameraDetection:
         detection_image_path = str(save_dir_path / f"{base_filename}_detection.jpg")
         txt_path = str(save_dir_path / f"{base_filename}_detection.txt")
 
-        cv2.imwrite(origin_image_path, frame, [cv2.IMWRITE_PNG_COMPRESSION, 9])
-        cv2.imwrite(detection_image_path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        self._write_image(origin_image_path, frame, ".png", [cv2.IMWRITE_PNG_COMPRESSION, 9])
+        self._write_image(detection_image_path, annotated, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
         with open(txt_path, "w", encoding="utf-8") as file:
             for label, confidence, bbox in detections:
                 x1, y1, x2, y2 = bbox
@@ -137,4 +150,3 @@ class CameraDetection:
     def stop(self):
         self.running = False
         self.stop_camera()
-

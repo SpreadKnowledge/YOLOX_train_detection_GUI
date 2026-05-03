@@ -14,6 +14,8 @@ loguru
 matplotlib
 pycocotools>=2.0.2
 tabulate
+thop
+ninja
 psutil
 tensorboard
 onnx>=1.13.0

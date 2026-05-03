@@ -15,12 +15,19 @@ __all__ = ["configure_nccl", "configure_module", "configure_omp"]
 
 def configure_nccl():
     """Configure multi-machine environment variables of NCCL."""
+    if os.name == "nt":
+        logger.info("Skipping NCCL Infiniband configuration on Windows.")
+        return
     os.environ["NCCL_LAUNCH_MODE"] = "PARALLEL"
-    os.environ["NCCL_IB_HCA"] = subprocess.getoutput(
-        "pushd /sys/class/infiniband/ > /dev/null; for i in mlx5_*; "
-        "do cat $i/ports/1/gid_attrs/types/* 2>/dev/null "
-        "| grep v >/dev/null && echo $i ; done; popd > /dev/null"
-    )
+    try:
+        os.environ["NCCL_IB_HCA"] = subprocess.getoutput(
+            "pushd /sys/class/infiniband/ > /dev/null; for i in mlx5_*; "
+            "do cat $i/ports/1/gid_attrs/types/* 2>/dev/null "
+            "| grep v >/dev/null && echo $i ; done; popd > /dev/null"
+        )
+    except UnicodeDecodeError as exc:
+        logger.warning("Skipping NCCL_IB_HCA auto-detection: {}", exc)
+        os.environ["NCCL_IB_HCA"] = ""
     os.environ["NCCL_IB_GID_INDEX"] = "3"
     os.environ["NCCL_IB_TC"] = "106"
 

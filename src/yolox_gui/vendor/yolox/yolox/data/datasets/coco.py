@@ -12,6 +12,14 @@ from ..dataloading import get_yolox_datadir
 from .datasets_wrapper import CacheDataset, cache_read_img
 
 
+def _is_absolute_filename(file_name):
+    return os.path.isabs(file_name) or (
+        len(file_name) >= 3
+        and file_name[1] == ":"
+        and file_name[2] in ("\\", "/")
+    )
+
+
 def remove_useless_info(coco):
     """
     Remove useless info in coco dataset. COCO object is modified inplace.
@@ -72,7 +80,10 @@ class COCODataset(CacheDataset):
         self.preproc = preproc
         self.annotations = self._load_coco_annotations()
 
-        path_filename = [os.path.join(name, anno[3]) for anno in self.annotations]
+        path_filename = [
+            anno[3] if _is_absolute_filename(anno[3]) else os.path.join(name, anno[3])
+            for anno in self.annotations
+        ]
         super().__init__(
             input_dimension=img_size,
             num_imgs=self.num_imgs,
@@ -143,7 +154,7 @@ class COCODataset(CacheDataset):
     def load_image(self, index):
         file_name = self.annotations[index][3]
 
-        img_file = os.path.join(self.data_dir, self.name, file_name)
+        img_file = file_name if _is_absolute_filename(file_name) else os.path.join(self.data_dir, self.name, file_name)
 
         img = cv2.imread(img_file)
         assert img is not None, f"file named {img_file} not found"
